@@ -95,12 +95,12 @@ def render_card(task, tasks_data, sha):
     task_id = task["id"]
 
     def esc(s):
-        return html.escape(str(s)).replace('[', '&#91;').replace(']', '&#93;')
+        return html.escape(str(s))
     title_esc = esc(task.get('title', ''))
     site_esc = esc(task.get('site', ''))
     requester_esc = esc(task.get('requester', ''))
-    deadline_esc = html.escape(deadline)
-    st.markdown(
+    deadline_esc = esc(deadline)
+    st.html(
         f"""
         <div style="
             background: white;
@@ -125,8 +125,7 @@ def render_card(task, tasks_data, sha):
             </div>
             <div style="font-size:10px; color:#9ca3af; margin-top:6px;">依頼: {requester_esc}</div>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
     with st.expander("詳細 / ステータス変更"):
@@ -185,44 +184,41 @@ def main():
     for i, status in enumerate(STATUSES):
         count = sum(1 for t in tasks if t.get("status") == status)
         s = STATUS_STYLE[status]
-        cols[i].markdown(
+        cols[i].html(
             f"""<div style="
                 background:{s['bg']}; border:2px solid {s['border']};
                 border-radius:8px; padding:10px 14px; text-align:center;
             ">
                 <div style="font-size:22px; font-weight:700; color:{s['text']};">{count}</div>
                 <div style="font-size:12px; color:{s['text']};">{status}</div>
-            </div>""",
-            unsafe_allow_html=True,
+            </div>"""
         )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.html("<br>")
 
     # 列ヘッダー
     header = st.columns([1.2] + [1] * 4)
     header[0].markdown("")
     for i, status in enumerate(STATUSES):
         s = STATUS_STYLE[status]
-        header[i + 1].markdown(
+        header[i + 1].html(
             f"""<div style="
                 background:{s['bg']}; border:2px solid {s['border']};
                 border-radius:6px; padding:6px; text-align:center;
                 font-weight:700; font-size:13px; color:{s['text']};
-            ">{status}</div>""",
-            unsafe_allow_html=True,
+            ">{status}</div>"""
         )
 
-    st.markdown("<hr style='margin:8px 0;'>", unsafe_allow_html=True)
+    st.html("<hr style='margin:8px 0;'>")
 
     # インターンごとの行
     for intern in INTERNS:
         row = st.columns([1.2] + [1] * 4)
         with row[0]:
-            st.markdown(
+            st.html(
                 f"""<div style="
                     padding:12px 8px; font-weight:600; font-size:14px; color:#374151;
-                ">👤 {intern}</div>""",
-                unsafe_allow_html=True,
+                ">👤 {intern}</div>"""
             )
         for i, status in enumerate(STATUSES):
             with row[i + 1]:
@@ -234,12 +230,11 @@ def main():
                     for task in cell_tasks:
                         render_card(task, tasks_data, sha)
                 else:
-                    st.markdown(
-                        "<div style='min-height:44px; border:1px dashed #e5e7eb; border-radius:6px; margin-bottom:8px;'></div>",
-                        unsafe_allow_html=True,
+                    st.html(
+                        "<div style='min-height:44px; border:1px dashed #e5e7eb; border-radius:6px; margin-bottom:8px;'></div>"
                     )
 
-        st.markdown("<hr style='margin:4px 0; border-color:#f3f4f6;'>", unsafe_allow_html=True)
+        st.html("<hr style='margin:4px 0; border-color:#f3f4f6;'>")
 
     if total == 0:
         st.info("タスクがまだありません。Claude Codeで `/task` を実行して登録してください。")
