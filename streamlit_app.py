@@ -3,6 +3,7 @@ import json
 import base64
 import urllib.request
 import urllib.error
+import html
 
 # ── 定数 ──────────────────────────────────────────────────────────────────
 REPO = "plusms/intern-task-dashboard"
@@ -93,6 +94,10 @@ def render_card(task, tasks_data, sha):
     deadline = task.get("deadline") or ""
     task_id = task["id"]
 
+    title_esc = html.escape(task.get('title', ''))
+    site_esc = html.escape(task.get('site', ''))
+    requester_esc = html.escape(task.get('requester', ''))
+    deadline_esc = html.escape(deadline)
     st.markdown(
         f"""
         <div style="
@@ -104,19 +109,19 @@ def render_card(task, tasks_data, sha):
             margin-bottom: 8px;
         ">
             <div style="font-weight:600; font-size:13px; margin-bottom:6px; line-height:1.4;">
-                {task['title']}
+                {title_esc}
             </div>
             <div style="font-size:11px; color:#6b7280; margin-bottom:6px;">
-                📍 {task.get('site', '')}
+                📍 {site_esc}
             </div>
             <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
                 <span style="
                     background:{ps['bg']}; color:{ps['text']};
                     border-radius:4px; padding:2px 7px; font-size:10px; font-weight:600;
                 ">{priority}</span>
-                {f'<span style="font-size:11px; color:#ef4444;">⏰ {deadline}</span>' if deadline else ''}
+                {f'<span style="font-size:11px; color:#ef4444;">⏰ {deadline_esc}</span>' if deadline else ''}
             </div>
-            <div style="font-size:10px; color:#9ca3af; margin-top:6px;">依頼: {task.get('requester', '')}</div>
+            <div style="font-size:10px; color:#9ca3af; margin-top:6px;">依頼: {requester_esc}</div>
         </div>
         """,
         unsafe_allow_html=True,
