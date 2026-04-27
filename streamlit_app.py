@@ -7,7 +7,10 @@ import html as html_mod
 
 REPO = "plusms/intern-task-dashboard"
 FILE_PATH = "tasks.json"
+ROUTINES_FILE_PATH = "routines.json"
 INTERNS = ["亀矢", "佐藤", "武田", "中村", "山田"]
+ASSIGNEE_OPTIONS = ["全員"] + ["亀矢", "佐藤", "武田", "中村", "山田"]
+FREQUENCY_OPTIONS = ["毎出勤時", "週1回", "隔週", "月1回", "その他"]
 STATUSES = ["未着手", "進行中", "確認待ち", "完了"]
 
 STATUS_STYLE = {
@@ -68,6 +71,59 @@ def github_write(content, sha, message="update tasks"):
         url,
         data=data,
         method="PUT",
+        headers={
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 409:
+            st.warning("他の人が同時に更新しました。ページを更新してから再試行してください。")
+        else:
+            st.error(f"GitHub書き込みエラー: {e.code}")
+        return None
+
+
+def github_read_routines():
+    token = get_token()
+    url = f"https://api.github.com/repos/{REPO}/contents/{ROUTINES_FILE_PATH}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            res = json.loads(r.read())
+        content = json.loads(base64.b64decode(res["content"]).decode("utf-8"))
+        return content, res["sha"]
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {"routines": []}, None
+        st.error(f"GitHub読み込みエラー: {e.code}")
+        st.stop()
+
+
+def github_write_routines(content, sha, message="update routines"):
+    token = get_token()
+    url = f"https://api.github.com/repos/{REPO}/contents/{ROUTINES_FILE_PATH}"
+    body = {
+        "message": message,
+        "content": base64.b64encode(
+            json.dumps(content, ensure_ascii=False, indent=2).encode("utf-8")
+        ).decode("utf-8"),
+    }
+    if sha:
+        body["sha"] = sha
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="PUT",
         headers={
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
@@ -229,49 +285,127 @@ def render_board(tasks, tasks_data, sha, selected_interns):
         st.info("該当するタスクがありません。")
 
 
-def render_routines(tasks, tasks_data, sha):
-    routine_tasks = [t for t in tasks if t.get("assignee") == "共通"]
+def render_routine_card(r, routines_data, r_sha):
+    import uuid as _uuid
+    rid = r["id"]
+    edit_key = f"edit_routine_{rid}"
+    is_editing = st.session_state.get(edit_key, False)
 
-    if not routine_tasks:
-        st.info("共通ルーティンはまだありません。`/task` で担当「共通」として登録してください。")
-        return
+    assignee = r.get("assignee", "全員")
+    assignee_color = "#6b7280" if assignee == "全員" else "#3b82f6"
+    assignee_bg = "#f3f4f6" if assignee == "全員" else "#eff6ff"
 
-    # サマリー
-    cols = st.columns(4)
-    for i, status in enumerate(STATUSES):
-        count = sum(1 for t in routine_tasks if t.get("status") == status)
-        s = STATUS_STYLE[status]
-        with cols[i]:
+    with st.container(border=True):
+        if not is_editing:
             st.html(
-                f"""<div style="
-                    background:{s['bg']}; border:2px solid {s['border']};
-                    border-radius:8px; padding:10px 14px; text-align:center;
-                ">
-                    <div style="font-size:22px; font-weight:700; color:{s['text']};">{count}</div>
-                    <div style="font-size:12px; color:{s['text']};">{status}</div>
-                </div>"""
+                f"""
+                <div style="padding:2px 0 4px;">
+                    <div style="font-weight:700; font-size:14px; margin-bottom:8px;">{esc(r.get('title',''))}</div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+                        <span style="background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0;
+                            border-radius:4px; padding:2px 8px; font-size:11px; font-weight:600;">
+                            🔁 {esc(r.get('frequency',''))}
+                        </span>
+                        <span style="background:{assignee_bg}; color:{assignee_color};
+                            border-radius:4px; padding:2px 8px; font-size:11px; font-weight:600;">
+                            👤 {esc(assignee)}
+                        </span>
+                        {f'<span style="background:#1e293b; color:#e2e8f0; border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace;">{esc(r.get("command",""))}</span>' if r.get("command") else ''}
+                    </div>
+                    <div style="font-size:12px; color:#475569; line-height:1.6;">{esc(r.get('description',''))}</div>
+                </div>
+                """
             )
+            if st.button("✏️ 編集", key=f"edit_btn_{rid}", use_container_width=True):
+                st.session_state[edit_key] = True
+                st.rerun()
+        else:
+            new_title = st.text_input("業務タイトル", value=r.get("title", ""), key=f"t_{rid}")
+            new_freq = st.selectbox("頻度", FREQUENCY_OPTIONS,
+                index=FREQUENCY_OPTIONS.index(r.get("frequency", "毎出勤時")) if r.get("frequency") in FREQUENCY_OPTIONS else 0,
+                key=f"f_{rid}")
+            new_cmd = st.text_input("使用コマンド", value=r.get("command", ""), key=f"c_{rid}")
+            new_desc = st.text_area("詳細", value=r.get("description", ""), key=f"d_{rid}", height=80)
+            new_assignee = st.selectbox("担当", ASSIGNEE_OPTIONS,
+                index=ASSIGNEE_OPTIONS.index(r.get("assignee", "全員")) if r.get("assignee") in ASSIGNEE_OPTIONS else 0,
+                key=f"a_{rid}")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("💾 保存", key=f"save_{rid}", type="primary", use_container_width=True):
+                    latest, latest_sha = github_read_routines()
+                    for item in latest["routines"]:
+                        if item["id"] == rid:
+                            item["title"] = new_title
+                            item["frequency"] = new_freq
+                            item["command"] = new_cmd
+                            item["description"] = new_desc
+                            item["assignee"] = new_assignee
+                            break
+                    result = github_write_routines(latest, latest_sha, f"update routine: {new_title}")
+                    if result:
+                        st.session_state[edit_key] = False
+                        st.success("保存しました")
+                        st.rerun()
+            with col2:
+                if st.button("🗑️ 削除", key=f"del_{rid}", use_container_width=True):
+                    latest, latest_sha = github_read_routines()
+                    latest["routines"] = [item for item in latest["routines"] if item["id"] != rid]
+                    result = github_write_routines(latest, latest_sha, f"delete routine: {r.get('title','')}")
+                    if result:
+                        st.session_state[edit_key] = False
+                        st.rerun()
+            if st.button("キャンセル", key=f"cancel_{rid}", use_container_width=True):
+                st.session_state[edit_key] = False
+                st.rerun()
+
+
+def render_routines():
+    import uuid as _uuid
+    routines_data, r_sha = github_read_routines()
+    routines = routines_data.get("routines", [])
+
+    if routines:
+        cols = st.columns(3)
+        for i, r in enumerate(routines):
+            with cols[i % 3]:
+                render_routine_card(r, routines_data, r_sha)
+    else:
+        st.info("ルーティンはまだありません。下のフォームから追加してください。")
 
     st.html("<br>")
+    st.markdown("---")
+    st.markdown("#### ＋ 新規ルーティン追加")
 
-    # ステータスごとに縦並びで表示
-    for status in STATUSES:
-        status_tasks = [t for t in routine_tasks if t.get("status") == status]
-        if not status_tasks:
-            continue
-        s = STATUS_STYLE[status]
-        st.html(
-            f"""<div style="
-                display:inline-block; background:{s['bg']}; border:1px solid {s['border']};
-                border-radius:4px; padding:3px 10px; font-size:12px;
-                font-weight:700; color:{s['text']}; margin-bottom:8px;
-            ">{status}</div>"""
-        )
-        cols = st.columns(3)
-        for j, task in enumerate(status_tasks):
-            with cols[j % 3]:
-                render_card(task, tasks_data, sha)
-        st.html("<br>")
+    with st.container(border=True):
+        new_title = st.text_input("業務タイトル", key="new_r_title")
+        col1, col2 = st.columns(2)
+        with col1:
+            new_freq = st.selectbox("頻度", FREQUENCY_OPTIONS, key="new_r_freq")
+        with col2:
+            new_assignee = st.selectbox("担当", ASSIGNEE_OPTIONS, key="new_r_assignee")
+        new_cmd = st.text_input("使用コマンド（例: /knowhow-update）", key="new_r_cmd")
+        new_desc = st.text_area("詳細", key="new_r_desc", height=80)
+
+        if st.button("登録する", type="primary", use_container_width=True, key="new_r_submit"):
+            if not new_title:
+                st.warning("業務タイトルを入力してください")
+            else:
+                import uuid as _uuid
+                new_r = {
+                    "id": "r" + str(_uuid.uuid4())[:7],
+                    "title": new_title,
+                    "frequency": new_freq,
+                    "command": new_cmd,
+                    "description": new_desc,
+                    "assignee": new_assignee,
+                }
+                latest, latest_sha = github_read_routines()
+                latest["routines"].append(new_r)
+                result = github_write_routines(latest, latest_sha, f"add routine: {new_title}")
+                if result:
+                    st.success(f"「{new_title}」を登録しました")
+                    st.rerun()
 
 
 def main():
@@ -337,7 +471,7 @@ def main():
         render_board(board_tasks, tasks_data, sha, selected_interns)
 
     with tab_routine:
-        render_routines(tasks, tasks_data, sha)
+        render_routines()
 
 
 if __name__ == "__main__":
