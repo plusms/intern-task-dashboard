@@ -188,36 +188,82 @@ def render_card(task, tasks_data, sha):
             st.rerun()
 
         if is_expanded:
-            st.markdown("**📝 作業内容**")
-            st.write(task.get("content", ""))
-            if task.get("reference"):
-                st.markdown("**📎 参照スキル**")
-                st.write(task.get("reference", ""))
-            if task.get("notes"):
-                st.markdown("**💬 補足**")
-                st.write(task.get("notes", ""))
-            st.caption(f"作成日: {str(task.get('created_at', ''))[:10]}")
+            edit_task_key = f"edit_task_{task_id}"
+            is_editing_task = st.session_state.get(edit_task_key, False)
 
-            st.divider()
-            new_status = st.selectbox(
-                "ステータス",
-                STATUSES,
-                index=STATUSES.index(task.get("status", "未着手")),
-                key=f"sel_{task_id}",
-            )
-            if st.button("保存", key=f"btn_{task_id}", type="primary"):
-                latest_data, latest_sha = github_read()
-                for t in latest_data["tasks"]:
-                    if t["id"] == task_id:
-                        t["status"] = new_status
-                        break
-                result = github_write(
-                    latest_data, latest_sha,
-                    f"status: {task['title']} → {new_status}"
-                )
-                if result:
-                    st.success(f"✅ {new_status} に更新しました")
-                    st.rerun()
+            if not is_editing_task:
+                st.markdown("**📝 作業内容**")
+                st.write(task.get("content", ""))
+                if task.get("reference"):
+                    st.markdown("**📎 参照スキル**")
+                    st.write(task.get("reference", ""))
+                if task.get("notes"):
+                    st.markdown("**💬 補足**")
+                    st.write(task.get("notes", ""))
+                st.caption(f"作成日: {str(task.get('created_at', ''))[:10]}")
+
+                st.divider()
+                c1, c2 = st.columns(2)
+                with c1:
+                    new_status = st.selectbox(
+                        "ステータス", STATUSES,
+                        index=STATUSES.index(task.get("status", "未着手")),
+                        key=f"sel_{task_id}",
+                    )
+                    if st.button("保存", key=f"btn_{task_id}", type="primary", use_container_width=True):
+                        latest_data, latest_sha = github_read()
+                        for t in latest_data["tasks"]:
+                            if t["id"] == task_id:
+                                t["status"] = new_status
+                                break
+                        result = github_write(latest_data, latest_sha, f"status: {task['title']} → {new_status}")
+                        if result:
+                            st.success(f"✅ {new_status} に更新しました")
+                            st.rerun()
+                with c2:
+                    st.write("")
+                    if st.button("✏️ 編集", key=f"edit_task_btn_{task_id}", use_container_width=True):
+                        st.session_state[edit_task_key] = True
+                        st.rerun()
+            else:
+                e_title    = st.text_input("タイトル", value=task.get("title", ""), key=f"et_{task_id}")
+                e_site     = st.text_input("サイト", value=task.get("site", ""), key=f"es_{task_id}")
+                e_assignee = st.selectbox("担当", INTERNS, index=INTERNS.index(task.get("assignee", INTERNS[0])) if task.get("assignee") in INTERNS else 0, key=f"ea_{task_id}")
+                e_priority = st.selectbox("優先度", ["ルーティン", "差し込み"], index=0 if task.get("priority") != "差し込み" else 1, key=f"ep_{task_id}")
+                e_deadline = st.text_input("期限（YYYY-MM-DD、なければ空欄）", value=task.get("deadline", ""), key=f"ed_{task_id}")
+                e_requester= st.text_input("依頼者", value=task.get("requester", ""), key=f"er_{task_id}")
+                e_content  = st.text_area("作業内容", value=task.get("content", ""), key=f"ec_{task_id}", height=80)
+                e_ref      = st.text_input("参照スキル", value=task.get("reference", ""), key=f"erf_{task_id}")
+                e_notes    = st.text_input("補足", value=task.get("notes", ""), key=f"en_{task_id}")
+
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    if st.button("💾 保存", key=f"save_task_{task_id}", type="primary", use_container_width=True):
+                        latest_data, latest_sha = github_read()
+                        for t in latest_data["tasks"]:
+                            if t["id"] == task_id:
+                                t.update({"title": e_title, "site": e_site, "assignee": e_assignee,
+                                          "priority": e_priority, "deadline": e_deadline,
+                                          "requester": e_requester, "content": e_content,
+                                          "reference": e_ref, "notes": e_notes})
+                                break
+                        result = github_write(latest_data, latest_sha, f"edit task: {e_title}")
+                        if result:
+                            st.session_state[edit_task_key] = False
+                            st.success("保存しました")
+                            st.rerun()
+                with c2:
+                    if st.button("🗑️ 削除", key=f"del_task_{task_id}", use_container_width=True):
+                        latest_data, latest_sha = github_read()
+                        latest_data["tasks"] = [t for t in latest_data["tasks"] if t["id"] != task_id]
+                        result = github_write(latest_data, latest_sha, f"delete task: {task.get('title','')}")
+                        if result:
+                            st.session_state[edit_task_key] = False
+                            st.rerun()
+                with c3:
+                    if st.button("キャンセル", key=f"cancel_task_{task_id}", use_container_width=True):
+                        st.session_state[edit_task_key] = False
+                        st.rerun()
 
 
 def render_board(tasks, tasks_data, sha, selected_interns):
@@ -284,6 +330,45 @@ def render_board(tasks, tasks_data, sha, selected_interns):
     if not tasks:
         st.info("該当するタスクがありません。")
 
+    st.html("<br>")
+    st.markdown("---")
+    st.markdown("#### ＋ タスク追加")
+    with st.container(border=True):
+        import uuid as _uuid
+        from datetime import datetime as _dt
+        c1, c2 = st.columns(2)
+        with c1:
+            f_title    = st.text_input("タイトル", key="f_title")
+            f_assignee = st.selectbox("担当", INTERNS, key="f_assignee")
+            f_priority = st.selectbox("優先度", ["ルーティン", "差し込み"], key="f_priority")
+            f_deadline = st.text_input("期限（YYYY-MM-DD、なければ空欄）", key="f_deadline")
+        with c2:
+            f_requester = st.text_input("依頼者", key="f_requester")
+            f_site      = st.text_input("サイト", key="f_site")
+            f_ref       = st.text_input("参照スキル", key="f_ref")
+            f_notes     = st.text_input("補足", key="f_notes")
+        f_content = st.text_area("作業内容", key="f_content", height=80)
+
+        if st.button("登録する", type="primary", use_container_width=True, key="f_submit"):
+            if not f_title:
+                st.warning("タイトルを入力してください")
+            else:
+                new_task = {
+                    "id": str(_uuid.uuid4())[:8],
+                    "title": f_title, "site": f_site,
+                    "priority": f_priority, "deadline": f_deadline,
+                    "assignee": f_assignee, "requester": f_requester,
+                    "status": "未着手", "content": f_content,
+                    "reference": f_ref, "notes": f_notes,
+                    "created_at": _dt.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                }
+                latest_data, latest_sha = github_read()
+                latest_data["tasks"].append(new_task)
+                result = github_write(latest_data, latest_sha, f"add task: {f_title}")
+                if result:
+                    st.success(f"「{f_title}」を登録しました")
+                    st.rerun()
+
 
 def render_routine_card(r, routines_data, r_sha):
     import uuid as _uuid
@@ -295,30 +380,41 @@ def render_routine_card(r, routines_data, r_sha):
     assignee_color = "#6b7280" if assignee == "全員" else "#3b82f6"
     assignee_bg = "#f3f4f6" if assignee == "全員" else "#eff6ff"
 
+    detail_key = f"detail_routine_{rid}"
+    is_detail_open = st.session_state.get(detail_key, False)
+
     with st.container(border=True):
         if not is_editing:
             st.html(
                 f"""
                 <div style="padding:2px 0 4px;">
                     <div style="font-weight:700; font-size:14px; margin-bottom:8px;">{esc(r.get('title',''))}</div>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
-                        <span style="background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0;
-                            border-radius:4px; padding:2px 8px; font-size:11px; font-weight:600;">
-                            🔁 {esc(r.get('frequency',''))}
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <span style="font-size:11px; color:#6b7280;">
+                            頻度: <strong style="color:#16a34a;">{esc(r.get('frequency',''))}</strong>
                         </span>
-                        <span style="background:{assignee_bg}; color:{assignee_color};
-                            border-radius:4px; padding:2px 8px; font-size:11px; font-weight:600;">
-                            👤 {esc(assignee)}
+                        <span style="font-size:11px; color:#6b7280;">
+                            担当: <strong style="color:{assignee_color};">{esc(assignee)}</strong>
                         </span>
-                        {f'<span style="background:#1e293b; color:#e2e8f0; border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace;">{esc(r.get("command",""))}</span>' if r.get("command") else ''}
                     </div>
-                    <div style="font-size:12px; color:#475569; line-height:1.6;">{esc(r.get('description',''))}</div>
                 </div>
                 """
             )
-            if st.button("✏️ 編集", key=f"edit_btn_{rid}", use_container_width=True):
-                st.session_state[edit_key] = True
-                st.rerun()
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("▲ 閉じる" if is_detail_open else "▼ 詳細", key=f"detail_btn_{rid}", use_container_width=True):
+                    st.session_state[detail_key] = not is_detail_open
+                    st.rerun()
+            with c2:
+                if st.button("✏️ 編集", key=f"edit_btn_{rid}", use_container_width=True):
+                    st.session_state[edit_key] = True
+                    st.rerun()
+
+            if is_detail_open:
+                if r.get("command"):
+                    st.markdown(f"**コマンド:** `{r.get('command')}`")
+                if r.get("description"):
+                    st.write(r.get("description"))
         else:
             new_title = st.text_input("業務タイトル", value=r.get("title", ""), key=f"t_{rid}")
             new_freq = st.selectbox("頻度", FREQUENCY_OPTIONS,
