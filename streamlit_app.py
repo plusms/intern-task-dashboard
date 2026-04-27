@@ -94,9 +94,11 @@ def render_card(task, tasks_data, sha):
     deadline = task.get("deadline") or ""
     task_id = task["id"]
 
-    title_esc = html.escape(task.get('title', ''))
-    site_esc = html.escape(task.get('site', ''))
-    requester_esc = html.escape(task.get('requester', ''))
+    def esc(s):
+        return html.escape(str(s)).replace('[', '&#91;').replace(']', '&#93;')
+    title_esc = esc(task.get('title', ''))
+    site_esc = esc(task.get('site', ''))
+    requester_esc = esc(task.get('requester', ''))
     deadline_esc = html.escape(deadline)
     st.markdown(
         f"""
