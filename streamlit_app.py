@@ -3,9 +3,8 @@ import json
 import base64
 import urllib.request
 import urllib.error
-import html
+import html as html_mod
 
-# ── 定数 ──────────────────────────────────────────────────────────────────
 REPO = "plusms/intern-task-dashboard"
 FILE_PATH = "tasks.json"
 INTERNS = ["亀矢", "佐藤", "武田", "中村", "山田"]
@@ -18,12 +17,11 @@ STATUS_STYLE = {
     "完了":    {"bg": "#d1fae5", "border": "#10b981", "text": "#065f46"},
 }
 PRIORITY_STYLE = {
-    "差し込み": {"bg": "#fee2e2", "text": "#dc2626"},
+    "差し込み":   {"bg": "#fee2e2", "text": "#dc2626"},
     "ルーティン": {"bg": "#f3f4f6", "text": "#6b7280"},
 }
 
 
-# ── GitHub API ──────────────────────────────────────────────────────────────
 def get_token():
     try:
         return st.secrets["GITHUB_TOKEN"]
@@ -87,83 +85,91 @@ def github_write(content, sha, message="update tasks"):
         return None
 
 
-# ── カード描画 ──────────────────────────────────────────────────────────────
+def esc(s):
+    return html_mod.escape(str(s))
+
+
 def render_card(task, tasks_data, sha):
     priority = task.get("priority", "ルーティン")
     ps = PRIORITY_STYLE.get(priority, PRIORITY_STYLE["ルーティン"])
     deadline = task.get("deadline") or ""
     task_id = task["id"]
+    is_expanded = task_id in st.session_state.get("expanded", set())
 
-    def esc(s):
-        return html.escape(str(s))
-    title_esc = esc(task.get('title', ''))
-    site_esc = esc(task.get('site', ''))
-    requester_esc = esc(task.get('requester', ''))
-    deadline_esc = esc(deadline)
-    st.html(
-        f"""
-        <div style="
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-left: 4px solid {PRIORITY_STYLE['差し込み']['text'] if priority == '差し込み' else '#d1d5db'};
-            border-radius: 6px;
-            padding: 10px 12px;
-            margin-bottom: 8px;
-        ">
-            <div style="font-weight:600; font-size:13px; margin-bottom:6px; line-height:1.4;">
-                {title_esc}
+    with st.container(border=True):
+        st.html(
+            f"""
+            <div style="padding:2px 0 4px;">
+                <div style="font-weight:600; font-size:13px; margin-bottom:6px; line-height:1.4;">
+                    {esc(task.get('title', ''))}
+                </div>
+                <div style="font-size:11px; color:#6b7280; margin-bottom:6px;">
+                    📍 {esc(task.get('site', ''))}
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:4px;">
+                    <span style="
+                        background:{ps['bg']}; color:{ps['text']};
+                        border-radius:4px; padding:2px 7px; font-size:10px; font-weight:600;
+                    ">{esc(priority)}</span>
+                    {f'<span style="font-size:11px; color:#ef4444;">⏰ {esc(deadline)}</span>' if deadline else ''}
+                </div>
+                <div style="font-size:10px; color:#9ca3af;">依頼: {esc(task.get('requester', ''))}</div>
             </div>
-            <div style="font-size:11px; color:#6b7280; margin-bottom:6px;">
-                📍 {site_esc}
-            </div>
-            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-                <span style="
-                    background:{ps['bg']}; color:{ps['text']};
-                    border-radius:4px; padding:2px 7px; font-size:10px; font-weight:600;
-                ">{priority}</span>
-                {f'<span style="font-size:11px; color:#ef4444;">⏰ {deadline_esc}</span>' if deadline else ''}
-            </div>
-            <div style="font-size:10px; color:#9ca3af; margin-top:6px;">依頼: {requester_esc}</div>
-        </div>
-        """
-    )
-
-    with st.expander("詳細 / ステータス変更"):
-        st.markdown(f"**📝 作業内容**")
-        st.markdown(task.get("content", ""))
-        if task.get("reference"):
-            st.markdown(f"**📎 参照スキル**")
-            st.markdown(task.get("reference", ""))
-        if task.get("notes"):
-            st.markdown(f"**💬 補足**")
-            st.markdown(task.get("notes", ""))
-        st.markdown(f"*作成日: {str(task.get('created_at', ''))[:10]}*")
-
-        st.divider()
-        new_status = st.selectbox(
-            "ステータス",
-            STATUSES,
-            index=STATUSES.index(task.get("status", "未着手")),
-            key=f"sel_{task_id}",
+            """
         )
-        if st.button("保存", key=f"btn_{task_id}", type="primary"):
-            # 最新SHAで再取得してから書き込む（競合対策）
-            latest_data, latest_sha = github_read()
-            for t in latest_data["tasks"]:
-                if t["id"] == task_id:
-                    t["status"] = new_status
-                    break
-            result = github_write(latest_data, latest_sha, f"status: {task['title']} → {new_status}")
-            if result:
-                st.success(f"✅ {new_status} に更新しました")
-                st.rerun()
+
+        if st.button(
+            "▲ 閉じる" if is_expanded else "▼ 詳細",
+            key=f"toggle_{task_id}",
+            use_container_width=True,
+        ):
+            if "expanded" not in st.session_state:
+                st.session_state.expanded = set()
+            if is_expanded:
+                st.session_state.expanded.discard(task_id)
+            else:
+                st.session_state.expanded.add(task_id)
+            st.rerun()
+
+        if is_expanded:
+            st.markdown("**📝 作業内容**")
+            st.write(task.get("content", ""))
+            if task.get("reference"):
+                st.markdown("**📎 参照スキル**")
+                st.write(task.get("reference", ""))
+            if task.get("notes"):
+                st.markdown("**💬 補足**")
+                st.write(task.get("notes", ""))
+            st.caption(f"作成日: {str(task.get('created_at', ''))[:10]}")
+
+            st.divider()
+            new_status = st.selectbox(
+                "ステータス",
+                STATUSES,
+                index=STATUSES.index(task.get("status", "未着手")),
+                key=f"sel_{task_id}",
+            )
+            if st.button("保存", key=f"btn_{task_id}", type="primary"):
+                latest_data, latest_sha = github_read()
+                for t in latest_data["tasks"]:
+                    if t["id"] == task_id:
+                        t["status"] = new_status
+                        break
+                result = github_write(
+                    latest_data, latest_sha,
+                    f"status: {task['title']} → {new_status}"
+                )
+                if result:
+                    st.success(f"✅ {new_status} に更新しました")
+                    st.rerun()
 
 
-# ── メイン ──────────────────────────────────────────────────────────────────
 def main():
     st.set_page_config(page_title="インターン依頼ボード", layout="wide", page_icon="📋")
 
-    # ヘッダー
+    if "expanded" not in st.session_state:
+        st.session_state.expanded = set()
+
     c1, c2 = st.columns([9, 1])
     with c1:
         st.title("📋 インターン依頼ボード")
@@ -176,54 +182,93 @@ def main():
         tasks_data, sha = github_read()
 
     tasks = tasks_data.get("tasks", [])
-    total = len(tasks)
-    done = sum(1 for t in tasks if t.get("status") == "完了")
+
+    # サイドバーフィルター
+    with st.sidebar:
+        st.markdown("### 🔍 フィルター")
+
+        selected_interns = st.multiselect(
+            "インターン",
+            options=INTERNS,
+            default=[],
+            placeholder="全員",
+        )
+
+        all_requesters = sorted(set(t.get("requester", "") for t in tasks if t.get("requester")))
+        selected_requesters = st.multiselect(
+            "依頼者",
+            options=all_requesters,
+            default=[],
+            placeholder="全員",
+        )
+
+        all_sites = sorted(set(t.get("site", "") for t in tasks if t.get("site")))
+        selected_sites = st.multiselect(
+            "サイト",
+            options=all_sites,
+            default=[],
+            placeholder="全サイト",
+        )
+
+    # フィルター適用
+    filtered_tasks = tasks
+    if selected_interns:
+        filtered_tasks = [t for t in filtered_tasks if t.get("assignee") in selected_interns]
+    if selected_requesters:
+        filtered_tasks = [t for t in filtered_tasks if t.get("requester") in selected_requesters]
+    if selected_sites:
+        filtered_tasks = [t for t in filtered_tasks if t.get("site") in selected_sites]
 
     # サマリー
     cols = st.columns(4)
     for i, status in enumerate(STATUSES):
-        count = sum(1 for t in tasks if t.get("status") == status)
+        count = sum(1 for t in filtered_tasks if t.get("status") == status)
         s = STATUS_STYLE[status]
-        cols[i].html(
-            f"""<div style="
-                background:{s['bg']}; border:2px solid {s['border']};
-                border-radius:8px; padding:10px 14px; text-align:center;
-            ">
-                <div style="font-size:22px; font-weight:700; color:{s['text']};">{count}</div>
-                <div style="font-size:12px; color:{s['text']};">{status}</div>
-            </div>"""
-        )
+        with cols[i]:
+            st.html(
+                f"""<div style="
+                    background:{s['bg']}; border:2px solid {s['border']};
+                    border-radius:8px; padding:10px 14px; text-align:center;
+                ">
+                    <div style="font-size:22px; font-weight:700; color:{s['text']};">{count}</div>
+                    <div style="font-size:12px; color:{s['text']};">{status}</div>
+                </div>"""
+            )
 
     st.html("<br>")
 
     # 列ヘッダー
-    header = st.columns([1.2] + [1] * 4)
-    header[0].markdown("")
+    interns_to_show = selected_interns if selected_interns else INTERNS
+    header = st.columns([0.6] + [1] * 4)
+    with header[0]:
+        st.markdown("")
     for i, status in enumerate(STATUSES):
         s = STATUS_STYLE[status]
-        header[i + 1].html(
-            f"""<div style="
-                background:{s['bg']}; border:2px solid {s['border']};
-                border-radius:6px; padding:6px; text-align:center;
-                font-weight:700; font-size:13px; color:{s['text']};
-            ">{status}</div>"""
-        )
+        with header[i + 1]:
+            st.html(
+                f"""<div style="
+                    background:{s['bg']}; border:2px solid {s['border']};
+                    border-radius:6px; padding:6px; text-align:center;
+                    font-weight:700; font-size:13px; color:{s['text']};
+                ">{status}</div>"""
+            )
 
     st.html("<hr style='margin:8px 0;'>")
 
-    # インターンごとの行
-    for intern in INTERNS:
-        row = st.columns([1.2] + [1] * 4)
+    # インターン行
+    for intern in interns_to_show:
+        row = st.columns([0.6] + [1] * 4)
         with row[0]:
             st.html(
                 f"""<div style="
-                    padding:12px 8px; font-weight:600; font-size:14px; color:#374151;
-                ">👤 {intern}</div>"""
+                    padding:12px 4px; font-weight:600; font-size:13px;
+                    color:#374151; text-align:center;
+                ">👤<br>{esc(intern)}</div>"""
             )
         for i, status in enumerate(STATUSES):
             with row[i + 1]:
                 cell_tasks = [
-                    t for t in tasks
+                    t for t in filtered_tasks
                     if t.get("assignee") == intern and t.get("status") == status
                 ]
                 if cell_tasks:
@@ -236,8 +281,8 @@ def main():
 
         st.html("<hr style='margin:4px 0; border-color:#f3f4f6;'>")
 
-    if total == 0:
-        st.info("タスクがまだありません。Claude Codeで `/task` を実行して登録してください。")
+    if not filtered_tasks:
+        st.info("該当するタスクがありません。")
 
 
 if __name__ == "__main__":
