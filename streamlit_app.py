@@ -164,6 +164,116 @@ def render_card(task, tasks_data, sha):
                     st.rerun()
 
 
+def render_board(tasks, tasks_data, sha, selected_interns):
+    # サマリー
+    cols = st.columns(4)
+    for i, status in enumerate(STATUSES):
+        count = sum(1 for t in tasks if t.get("status") == status)
+        s = STATUS_STYLE[status]
+        with cols[i]:
+            st.html(
+                f"""<div style="
+                    background:{s['bg']}; border:2px solid {s['border']};
+                    border-radius:8px; padding:10px 14px; text-align:center;
+                ">
+                    <div style="font-size:22px; font-weight:700; color:{s['text']};">{count}</div>
+                    <div style="font-size:12px; color:{s['text']};">{status}</div>
+                </div>"""
+            )
+
+    st.html("<br>")
+
+    interns_to_show = selected_interns if selected_interns else INTERNS
+    header = st.columns([0.6] + [1] * 4)
+    with header[0]:
+        st.markdown("")
+    for i, status in enumerate(STATUSES):
+        s = STATUS_STYLE[status]
+        with header[i + 1]:
+            st.html(
+                f"""<div style="
+                    background:{s['bg']}; border:2px solid {s['border']};
+                    border-radius:6px; padding:6px; text-align:center;
+                    font-weight:700; font-size:13px; color:{s['text']};
+                ">{status}</div>"""
+            )
+
+    st.html("<hr style='margin:8px 0;'>")
+
+    for intern in interns_to_show:
+        row = st.columns([0.6] + [1] * 4)
+        with row[0]:
+            st.html(
+                f"""<div style="
+                    padding:12px 4px; font-weight:600; font-size:13px;
+                    color:#374151; text-align:center;
+                ">👤<br>{esc(intern)}</div>"""
+            )
+        for i, status in enumerate(STATUSES):
+            with row[i + 1]:
+                cell_tasks = [
+                    t for t in tasks
+                    if t.get("assignee") == intern and t.get("status") == status
+                ]
+                if cell_tasks:
+                    for task in cell_tasks:
+                        render_card(task, tasks_data, sha)
+                else:
+                    st.html(
+                        "<div style='min-height:44px; border:1px dashed #e5e7eb; border-radius:6px; margin-bottom:8px;'></div>"
+                    )
+
+        st.html("<hr style='margin:4px 0; border-color:#f3f4f6;'>")
+
+    if not tasks:
+        st.info("該当するタスクがありません。")
+
+
+def render_routines(tasks, tasks_data, sha):
+    routine_tasks = [t for t in tasks if t.get("assignee") == "共通"]
+
+    if not routine_tasks:
+        st.info("共通ルーティンはまだありません。`/task` で担当「共通」として登録してください。")
+        return
+
+    # サマリー
+    cols = st.columns(4)
+    for i, status in enumerate(STATUSES):
+        count = sum(1 for t in routine_tasks if t.get("status") == status)
+        s = STATUS_STYLE[status]
+        with cols[i]:
+            st.html(
+                f"""<div style="
+                    background:{s['bg']}; border:2px solid {s['border']};
+                    border-radius:8px; padding:10px 14px; text-align:center;
+                ">
+                    <div style="font-size:22px; font-weight:700; color:{s['text']};">{count}</div>
+                    <div style="font-size:12px; color:{s['text']};">{status}</div>
+                </div>"""
+            )
+
+    st.html("<br>")
+
+    # ステータスごとに縦並びで表示
+    for status in STATUSES:
+        status_tasks = [t for t in routine_tasks if t.get("status") == status]
+        if not status_tasks:
+            continue
+        s = STATUS_STYLE[status]
+        st.html(
+            f"""<div style="
+                display:inline-block; background:{s['bg']}; border:1px solid {s['border']};
+                border-radius:4px; padding:3px 10px; font-size:12px;
+                font-weight:700; color:{s['text']}; margin-bottom:8px;
+            ">{status}</div>"""
+        )
+        cols = st.columns(3)
+        for j, task in enumerate(status_tasks):
+            with cols[j % 3]:
+                render_card(task, tasks_data, sha)
+        st.html("<br>")
+
+
 def main():
     st.set_page_config(page_title="インターン依頼ボード", layout="wide", page_icon="📋")
 
@@ -183,9 +293,10 @@ def main():
 
     tasks = tasks_data.get("tasks", [])
 
-    # サイドバーフィルター
+    # サイドバーフィルター（ボードタブのみ有効）
     with st.sidebar:
         st.markdown("### 🔍 フィルター")
+        st.caption("ボードタブに適用されます")
 
         selected_interns = st.multiselect(
             "インターン",
@@ -210,79 +321,23 @@ def main():
             placeholder="全サイト",
         )
 
-    # フィルター適用
-    filtered_tasks = tasks
+    # フィルター適用（共通ルーティンは除外）
+    board_tasks = [t for t in tasks if t.get("assignee") != "共通"]
     if selected_interns:
-        filtered_tasks = [t for t in filtered_tasks if t.get("assignee") in selected_interns]
+        board_tasks = [t for t in board_tasks if t.get("assignee") in selected_interns]
     if selected_requesters:
-        filtered_tasks = [t for t in filtered_tasks if t.get("requester") in selected_requesters]
+        board_tasks = [t for t in board_tasks if t.get("requester") in selected_requesters]
     if selected_sites:
-        filtered_tasks = [t for t in filtered_tasks if t.get("site") in selected_sites]
+        board_tasks = [t for t in board_tasks if t.get("site") in selected_sites]
 
-    # サマリー
-    cols = st.columns(4)
-    for i, status in enumerate(STATUSES):
-        count = sum(1 for t in filtered_tasks if t.get("status") == status)
-        s = STATUS_STYLE[status]
-        with cols[i]:
-            st.html(
-                f"""<div style="
-                    background:{s['bg']}; border:2px solid {s['border']};
-                    border-radius:8px; padding:10px 14px; text-align:center;
-                ">
-                    <div style="font-size:22px; font-weight:700; color:{s['text']};">{count}</div>
-                    <div style="font-size:12px; color:{s['text']};">{status}</div>
-                </div>"""
-            )
+    # タブ
+    tab_board, tab_routine = st.tabs(["📋 ボード", "🔄 共通ルーティン"])
 
-    st.html("<br>")
+    with tab_board:
+        render_board(board_tasks, tasks_data, sha, selected_interns)
 
-    # 列ヘッダー
-    interns_to_show = selected_interns if selected_interns else INTERNS
-    header = st.columns([0.6] + [1] * 4)
-    with header[0]:
-        st.markdown("")
-    for i, status in enumerate(STATUSES):
-        s = STATUS_STYLE[status]
-        with header[i + 1]:
-            st.html(
-                f"""<div style="
-                    background:{s['bg']}; border:2px solid {s['border']};
-                    border-radius:6px; padding:6px; text-align:center;
-                    font-weight:700; font-size:13px; color:{s['text']};
-                ">{status}</div>"""
-            )
-
-    st.html("<hr style='margin:8px 0;'>")
-
-    # インターン行
-    for intern in interns_to_show:
-        row = st.columns([0.6] + [1] * 4)
-        with row[0]:
-            st.html(
-                f"""<div style="
-                    padding:12px 4px; font-weight:600; font-size:13px;
-                    color:#374151; text-align:center;
-                ">👤<br>{esc(intern)}</div>"""
-            )
-        for i, status in enumerate(STATUSES):
-            with row[i + 1]:
-                cell_tasks = [
-                    t for t in filtered_tasks
-                    if t.get("assignee") == intern and t.get("status") == status
-                ]
-                if cell_tasks:
-                    for task in cell_tasks:
-                        render_card(task, tasks_data, sha)
-                else:
-                    st.html(
-                        "<div style='min-height:44px; border:1px dashed #e5e7eb; border-radius:6px; margin-bottom:8px;'></div>"
-                    )
-
-        st.html("<hr style='margin:4px 0; border-color:#f3f4f6;'>")
-
-    if not filtered_tasks:
-        st.info("該当するタスクがありません。")
+    with tab_routine:
+        render_routines(tasks, tasks_data, sha)
 
 
 if __name__ == "__main__":
