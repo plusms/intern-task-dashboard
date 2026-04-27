@@ -203,13 +203,13 @@ def render_card(task, tasks_data, sha):
                 st.caption(f"作成日: {str(task.get('created_at', ''))[:10]}")
 
                 st.divider()
+                new_status = st.selectbox(
+                    "ステータス", STATUSES,
+                    index=STATUSES.index(task.get("status", "未着手")),
+                    key=f"sel_{task_id}",
+                )
                 c1, c2 = st.columns(2)
                 with c1:
-                    new_status = st.selectbox(
-                        "ステータス", STATUSES,
-                        index=STATUSES.index(task.get("status", "未着手")),
-                        key=f"sel_{task_id}",
-                    )
                     if st.button("保存", key=f"btn_{task_id}", type="primary", use_container_width=True):
                         latest_data, latest_sha = github_read()
                         for t in latest_data["tasks"]:
@@ -221,7 +221,6 @@ def render_card(task, tasks_data, sha):
                             st.success(f"✅ {new_status} に更新しました")
                             st.rerun()
                 with c2:
-                    st.write("")
                     if st.button("✏️ 編集", key=f"edit_task_btn_{task_id}", use_container_width=True):
                         st.session_state[edit_task_key] = True
                         st.rerun()
