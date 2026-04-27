@@ -5,7 +5,7 @@ import urllib.request
 import urllib.error
 
 # ── 定数 ──────────────────────────────────────────────────────────────────
-REPO = "plusms/intern-claudeprojects"
+REPO = "plusms/intern-task-dashboard"
 FILE_PATH = "tasks.json"
 INTERNS = ["亀矢", "佐藤", "武田", "中村", "山田"]
 STATUSES = ["未着手", "進行中", "確認待ち", "完了"]
